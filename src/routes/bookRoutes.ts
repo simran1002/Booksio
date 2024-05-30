@@ -1,15 +1,15 @@
 import express from 'express';
-import multer from 'multer';
-import { authMiddleware } from '../middleware/authMiddleware';
 import { uploadBooks, getBooks, getBookById, updateBook, deleteBook } from '../controllers/bookController';
+import { authenticateToken } from '../middleware/authMiddleware';
+import multer from 'multer';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 
-router.post('/upload', authMiddleware, upload.single('file'), uploadBooks);
-router.get('/', getBooks);
-router.get('/:id', getBookById);
-router.put('/:id', authMiddleware, updateBook);
-router.delete('/:id', authMiddleware, deleteBook);
+router.post('/upload-books', authenticateToken, upload.single('file'), uploadBooks);
+router.get('/books', getBooks);
+router.get('/books/:id', getBookById);
+router.put('/books/:id', authenticateToken, updateBook);
+router.delete('/books/:id', authenticateToken, deleteBook);
 
 export default router;

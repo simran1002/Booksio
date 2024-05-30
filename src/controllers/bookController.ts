@@ -1,11 +1,10 @@
+// src/controllers/bookController.ts
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { parseCSV } from '../utils/csvParser';
-import multer from 'multer';
 import path from 'path';
 
 const prisma = new PrismaClient();
-const upload = multer({ dest: 'uploads/' });
 
 export const uploadBooks = async (req: Request, res: Response) => {
   try {
@@ -17,13 +16,22 @@ export const uploadBooks = async (req: Request, res: Response) => {
     const books = await parseCSV(filePath);
 
     for (const book of books) {
+      const { title, author, price, publishedDate } = book;
+      const userId = (req as any).user?.id;
+
+      console.log(userId)
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
       await prisma.book.create({
         data: {
-          title: book.title,
-          author: book.author,
-          price: parseFloat(book.price),
-          publishedDate: new Date(book.publishedDate), // Ensure this is properly parsed as a Date
-          userId: parseInt(req.user!.id), // Use non-null assertion operator
+          title,
+          author,
+          price: parseFloat(price),
+          publishedDate: new Date(publishedDate),
+          userId: userId, // Change 'user' to 'userId'
         },
       });
     }
@@ -36,45 +44,52 @@ export const uploadBooks = async (req: Request, res: Response) => {
 };
 
 
-
 export const getBooks = async (req: Request, res: Response) => {
-  const books = await prisma.book.findMany();
-  res.send(books);
+  try {
+    const books = await prisma.book.findMany();
+    res.json(books);
+  } catch (error) {
+    console.error('Error fetching books:', error);
+    res.status(500).json({ error: 'Failed to fetch books' });
+  }
 };
 
 export const getBookById = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const book = await prisma.book.findUnique({ where: { id: parseInt(id) } });
-  if (!book) return res.status(404).send({ error: 'Book not found' });
-  res.send(book);
+  try {
+    const { id } = req.params;
+    const book = await prisma.book.findUnique({ where: { id: parseInt(id) } });
+    if (!book) return res.status(404).json({ error: 'Book not found' });
+    res.json(book);
+  } catch (error) {
+    console.error('Error fetching book by ID:', error);
+    res.status(500).json({ error: 'Failed to fetch book' });
+  }
 };
 
 export const updateBook = async (req: Request, res: Response) => {
-  const sellerId = parseInt(req.user?.id || ''); // Access user ID safely and convert to number
-  const { id } = req.params;
-  const { title, author, price } = req.body;
+  try {
+    const { id } = req.params;
+    const { title, author, price } = req.body;
 
-  const book = await prisma.book.findUnique({ where: { id: parseInt(id) } });
-  if (!book) return res.status(404).send({ error: 'Book not found' });
-  if (book.userId !== sellerId) return res.status(403).send({ error: 'Access denied' });
+    const updatedBook = await prisma.book.update({
+      where: { id: parseInt(id) },
+      data: { title, author, price: parseFloat(price) },
+    });
 
-  const updatedBook = await prisma.book.update({
-    where: { id: parseInt(id) },
-    data: { title, author, price },
-  });
-
-  res.send(updatedBook);
+    res.json(updatedBook);
+  } catch (error) {
+    console.error('Error updating book:', error);
+    res.status(500).json({ error: 'Failed to update book' });
+  }
 };
 
 export const deleteBook = async (req: Request, res: Response) => {
-  const sellerId = parseInt(req.user?.id || ''); // Access user ID safely and convert to number
-  const { id } = req.params;
-
-  const book = await prisma.book.findUnique({ where: { id: parseInt(id) } });
-  if (!book) return res.status(404).send({ error: 'Book not found' });
-  if (book.userId !== sellerId) return res.status(403).send({ error: 'Access denied' });
-
-  await prisma.book.delete({ where: { id: parseInt(id) } });
-
-  res.status(204).send();
+  try {
+    const { id } = req.params;
+    await prisma.book.delete({ where: { id: parseInt(id) } });
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting book:', error);
+    res.status(500).json({ error: 'Failed to delete book' });
+  }
 };

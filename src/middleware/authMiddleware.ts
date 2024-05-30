@@ -1,30 +1,50 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
 
-// Define a type for the user payload
-interface UserPayload {
-  id: string;
-  // Add other user properties if needed
-}
+// Initialize Prisma client
+const prisma = new PrismaClient();
 
-// Extend the Request interface to include a user property
+// Get JWT secret key from environment variables, fallback to a default value if not set
+const JWT_SECRET = process.env.JWT_SECRET || 'helloworld';
+
+// Extend Express Request interface to include a user property
 declare global {
   namespace Express {
     interface Request {
-      user?: UserPayload;
+      user?: {
+        id: number;
+        // Add other user properties here if needed
+      };
     }
   }
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return res.status(401).send({ error: 'Access denied. No token provided.' });
+export const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized - Token missing' });
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as UserPayload;
-    req.user = decoded;
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
+
+    if (!decoded || typeof decoded.id !== 'number') {
+      throw new Error('Invalid token format - User ID not found');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+
+    if (!user) {
+      return res.status(403).json({ error: 'Forbidden - User not found' });
+    }
+
+    req.user = user;
     next();
-  } catch (ex) {
-    res.status(400).send({ error: 'Invalid token.' });
+  } catch (err) {
+    console.error('Error in authenticateToken middleware:', err);
+    return res.status(403).json({ error: 'Forbidden - Authentication failed' });
   }
 };
